@@ -1,4 +1,3 @@
-
 from __future__ import absolute_import
 import psycopg2
 import threading
@@ -9,12 +8,12 @@ from .utils import NoValue, validate_name
 from .base_engine import BaseEngine
 
 
-class Engine(BaseEngine):
+class PsqlEngine(BaseEngine):
     def __init__(self, schema='public', autocreate=None, read_commited=False, **kw):
         self.read_commited = read_commited
         self.local = threading.local()
         self.schema = schema
-        super(Engine, self).__init__()
+        super(PsqlEngine, self).__init__()
 
         self.db_config = {}
         for k in ['host', 'port', 'user', 'password', 'dbname']:
@@ -23,9 +22,9 @@ class Engine(BaseEngine):
         if not self.db_config.get('dbname'):
             self.db_config['dbname'] = kw.get('db')
 
-        self.local.conn = self.get_connection(autocreate_db=autocreate)
+        self.local.conn = self.connection(autocreate_db=autocreate)
 
-    def get_connection(self, autocreate_db=False):
+    def connection(self, autocreate_db=False):
         try:
             return psycopg2.connect(**self.db_config)
         except psycopg2.OperationalError as e:
@@ -45,7 +44,7 @@ class Engine(BaseEngine):
     def commit(self):
         self.local.conn.commit()
         self.fire_event(True)
-    
+
     def rollback(self):
         self.local.conn.rollback()
         self.fire_event(False)
@@ -55,13 +54,13 @@ class Engine(BaseEngine):
         self.local.cursor = None
         self.local.conn = None
 
-    def get_cursor(self):
+    def cursor(self):
         self.thread_init()
         if hasattr(self.local, 'cursor'):
             return self.local.cursor
-        
+
         if not hasattr(self.local, 'conn'):
-            self.local.conn = self.get_connection()
+            self.local.conn = self.connection()
 
         self.local.cursor = cursor = self.local.conn.cursor()
         if self.read_commited:
@@ -69,21 +68,21 @@ class Engine(BaseEngine):
         cursor.execute('SET search_path TO ' + self.schema)
         return cursor
 
-    def get_table(self, name):
+    def table(self, name):
         return PsqlTable(name, self)
-    
-    def get_tables(self):
-        cursor = self.get_cursor()
+
+    def tables(self):
+        cursor = self.cursor()
         cursor.execute('SELECT tablename FROM pg_catalog.pg_tables where schemaname=%s', (self.schema,))
         for row in cursor:
             yield row[0]
 
-    def get_columns(self, table):
+    def columns(self, table):
         self.thread_init()
         result = self.local.tables.get(table)
         if not result:
             result = []
-            cursor = self.get_cursor()
+            cursor = self.cursor()
             # get primary key
 
             primary = set()
@@ -96,7 +95,9 @@ class Engine(BaseEngine):
             for row in cursor:
                 primary.add(row[0])
 
-            cursor.execute('select column_name, is_nullable, data_type, column_default, numeric_precision, numeric_precision_radix, * from INFORMATION_SCHEMA.COLUMNS where table_catalog=%s and table_schema=%s and table_name=%s', (self.db_config['dbname'], self.schema, table))
+            cursor.execute(
+                'select column_name, is_nullable, data_type, column_default, numeric_precision, numeric_precision_radix, * from INFORMATION_SCHEMA.COLUMNS where table_catalog=%s and table_schema=%s and table_name=%s',
+                (self.db_config['dbname'], self.schema, table))
             for row in cursor:
                 result.append({
                     'name': row[0],
@@ -104,7 +105,7 @@ class Engine(BaseEngine):
                     'type': row[2],
                     'default': row[3],
                     'primary': row[0] in primary
-                    #'auto_increment': False
+                    # 'auto_increment': False
                 })
             self.local.tables[table] = result
         return copy.deepcopy(result)
@@ -114,7 +115,8 @@ class PsqlTable(Table):
     def __init__(self, *a, **kw):
         super(PsqlTable, self).__init__(*a, quote='"', **kw)
 
-    def add_column(self, name, column_type, not_null=False, default=NoValue, exist_ok=False, primary=False, auto_increment=False, collate=None):
+    def add_column(self, name, column_type, not_null=False, default=NoValue, exist_ok=False, primary=False,
+                   auto_increment=False, collate=None):
         validate_name(name)
         assert re.match(r'^[\w\d\(\)]+$', column_type), 'Wrong type: {}'.format(column_type)
         values = []
@@ -140,9 +142,9 @@ class PsqlTable(Table):
             scolumn += ' DEFAULT %s'
             values.append(default)
 
-        if self.tablename in self.engine.get_tables():
+        if self.tablename in self.engine.tables():
             if exist_ok:
-                if self.get_column(name):
+                if self.column(name):
                     return
             if primary:
                 raise NotImplementedError()
@@ -155,7 +157,8 @@ class PsqlTable(Table):
         self.engine.local.tables[self.tablename] = None
 
     def has_index(self, name):
-        self.cursor.execute('select i.relname '
+        self.cursor.execute(
+            'select i.relname '
             'from pg_class t, pg_class i, pg_index ix, pg_attribute a '
             'where t.oid = ix.indrelid and i.oid = ix.indexrelid '
             'and a.attrelid = t.oid and a.attnum = ANY(ix.indkey) '

@@ -5,7 +5,7 @@ class MultiException(Exception):
         self.exceptions = e
 
 
-class BaseEngine(object):
+class BaseEngine:
     def __init__(self):
         if not hasattr(self, 'local'):
             self.local = type('local', (object,), {})()
