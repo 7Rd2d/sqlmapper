@@ -78,7 +78,19 @@ class Table:
         if result:
             return result[0]
 
-    def find(self, filter=None, limit=None, join=None, left_join=None, for_update=False, columns=None, group_by=None, order_by=None, distinct=False):
+    def find(
+            self,
+            filter=None,
+            limit=None,
+            join=None,
+            left_join=None,
+            for_update=False,
+            columns=None,
+            group_by=None,
+            order_by=None,
+            distinct=False,
+            offset=None
+    ):
         """
             join='subtable.id=column'
             join='subtable as tbl.id=column'
@@ -150,6 +162,10 @@ class Table:
         if limit:
             assert is_int(limit)
             sql += ' LIMIT {}'.format(limit)
+
+        if offset:
+            assert is_int(offset)
+            sql += f' OFFSET {offset}'
 
         if for_update:
             sql += ' FOR UPDATE'

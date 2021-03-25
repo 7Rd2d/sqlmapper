@@ -74,7 +74,7 @@ class PsqlEngine(BaseEngine):
 
     def tables(self):
         cursor = self.cursor()
-        cursor.execute('SELECT table_name FROM pg_catalog.pg_tables where schemaname=%s', (self.schema,))
+        cursor.execute('SELECT tablename FROM pg_catalog.pg_tables where schemaname=%s', (self.schema,))
         for row in cursor:
             yield row[0]
 
@@ -121,6 +121,7 @@ class PsqlTable(Table):
         validate_name(name)
         assert re.match(r'^[\w\d\(\)]+$', column_type), 'Wrong type: {}'.format(column_type)
         values = []
+        clause = []
 
         if primary:
             if auto_increment:
@@ -152,14 +153,16 @@ class PsqlTable(Table):
                     return
             if primary:
                 raise NotImplementedError()
-            sql = f'ALTER TABLE {self.table_name} ADD COLUMN {scolumn}'
+            clause.append(f'ALTER TABLE {self.table_name} ADD COLUMN {scolumn}')
             if foreign_key and isinstance(foreign_key, tuple):
                 if isinstance(foreign_key[0], PsqlTable):
-                    sql += f', ADD FOREIGN KEY ({name}) REFERENCES {foreign_key[0].table_name} ({foreign_key[1]})'
+                    clause.append(f'ADD FOREIGN KEY ({name}) REFERENCES {foreign_key[0].table_name} ({foreign_key[1]})')
                 else:
                     raise TypeError()
         else:
-            sql = f'CREATE TABLE {self.table_name} ({scolumn})'
+            clause.append(f'CREATE TABLE {self.table_name} ({scolumn})')
+
+        sql = ','.join(clause)
 
         self.cursor.execute(sql, tuple(values))
         self.engine.commit()

@@ -99,6 +99,12 @@ def main():
     assert r[1]['name'] == 'debian'
     assert r[1]['count_value'] == 2
 
+    r = list(book.find(columns=['name'], limit=3, offset=2))
+    assert len(r) == 3
+    assert r[0]['name'] == 'debian'
+    assert r[1]['name'] == 'debian'
+    assert r[2]['name'] == 'ubuntu'
+
     book.add_column('ext', 'int', exist_ok=True)
     assert len(book.describe()) == 4
 
