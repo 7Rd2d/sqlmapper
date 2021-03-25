@@ -1,30 +1,19 @@
 
-import sys
 import re
 
-
-PY3 = sys.version_info.major == 3
 NoValue = object()
 
-if PY3:
-    def is_int(value):
-        return isinstance(value, int)
 
-    def is_str(value):
-        return isinstance(value, str)
+def is_int(value):
+    return isinstance(value, int)
 
-    def is_bytes(value):
-        return isinstance(value, bytes)
 
-else:
-    def is_int(value):
-        return isinstance(value, (int, long))
+def is_str(value):
+    return isinstance(value, str)
 
-    def is_str(value):
-        return isinstance(value, unicode)
 
-    def is_bytes(value):
-        return isinstance(value, str)
+def is_bytes(value):
+    return isinstance(value, bytes)
 
 
 def validate_name(name):
