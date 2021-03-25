@@ -4,9 +4,9 @@ import re
 from .utils import NoValue, validate_name, quote_key, format_func, is_bytes, is_int, is_str
 
 
-class Table(object):
+class Table:
     def __init__(self, name, engine, keyword='%s', quote='`'):
-        self.tablename = name
+        self.table_name = name
         self.engine = engine
         self.keyword = keyword
         self.quote = quote
@@ -16,12 +16,12 @@ class Table(object):
 
     @property
     def cursor(self):
-        return self.engine.get_cursor()
+        return self.engine.cursor()
 
     def describe(self):
-        return self.engine.get_columns(self.tablename)
+        return self.engine.columns(self.table_name)
 
-    def get_column(self, name):
+    def column(self, name):
         for column in self.describe():
             if column['name'] == name:
                 return column
@@ -35,7 +35,7 @@ class Table(object):
             values.append(value)
             items.append(self.keyword)
 
-        sql = 'INSERT INTO {} ({}) VALUES ({})'.format(self.cc(self.tablename), ', '.join(keys), ', '.join(items))
+        sql = 'INSERT INTO {} ({}) VALUES ({})'.format(self.cc(self.table_name), ', '.join(keys), ', '.join(items))
         self.cursor.execute(sql, tuple(values))
         assert self.cursor.rowcount == 1
         return self.cursor.lastrowid
@@ -50,7 +50,7 @@ class Table(object):
                 if '.' in k:
                     k = self.cc(k)
                 else:
-                    k = self.cc(self.tablename + '.' + k)
+                    k = self.cc(self.table_name + '.' + k)
                 if v is None:
                     keys.append(k + ' is NULL')
                 else:
@@ -90,7 +90,7 @@ class Table(object):
                 columns = [columns]
             columns = ', '.join(map(lambda n: format_func(n, self.quote), columns))
         else:
-            columns = '{}.*'.format(self.tablename)
+            columns = '{}.*'.format(self.table_name)
 
         joins = []
         if join or left_join:
@@ -114,7 +114,7 @@ class Table(object):
 
             key = None
             if left_join:
-                for c in self.engine.get_columns(self.tablename):
+                for c in self.engine.columns(self.table_name):
                     if c['primary']:
                         key = c['name']
                         break
@@ -127,7 +127,7 @@ class Table(object):
         sql = 'SELECT '
         if distinct:
             sql += 'DISTINCT '
-        sql += '{} FROM {}'.format(columns, self.cc(self.tablename))
+        sql += '{} FROM {}'.format(columns, self.cc(self.table_name))
         where, values = self._build_filter(filter)
         if join:
             sql += join
@@ -189,7 +189,7 @@ class Table(object):
             up.append('{} = {}'.format(self.cc(key), self.keyword))
             values.append(value)
 
-        sql = 'UPDATE {} SET {}'.format(self.cc(self.tablename), ', '.join(up))
+        sql = 'UPDATE {} SET {}'.format(self.cc(self.table_name), ', '.join(up))
 
         where, wvalues = self._build_filter(filter)
         if where:
@@ -208,7 +208,7 @@ class Table(object):
     def delete(self, filter=None):
         where, values = self._build_filter(filter)
 
-        sql = 'DELETE FROM {}'.format(self.cc(self.tablename))
+        sql = 'DELETE FROM {}'.format(self.cc(self.table_name))
         if where:
             sql += ' WHERE {}'.format(where)
         self.cursor.execute(sql, tuple(values))
@@ -216,7 +216,7 @@ class Table(object):
     def count(self, filter=None):
         where, values = self._build_filter(filter)
 
-        sql = 'SELECT COUNT(*) FROM {}'.format(self.cc(self.tablename))
+        sql = 'SELECT COUNT(*) FROM {}'.format(self.cc(self.table_name))
         if where:
             sql += ' WHERE {}'.format(where)
         self.cursor.execute(sql, tuple(values))
@@ -226,5 +226,6 @@ class Table(object):
         sql = 'DROP TABLE '
         if exist_ok:
             sql += 'IF EXISTS '
-        sql += self.tablename
+        sql += self.table_name
+        sql += ' CASCADE'
         self.cursor.execute(sql)

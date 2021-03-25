@@ -3,6 +3,7 @@ import psycopg2
 import threading
 import re
 import copy
+
 from .table import Table
 from .utils import NoValue, validate_name
 from .base_engine import BaseEngine
@@ -73,7 +74,7 @@ class PsqlEngine(BaseEngine):
 
     def tables(self):
         cursor = self.cursor()
-        cursor.execute('SELECT tablename FROM pg_catalog.pg_tables where schemaname=%s', (self.schema,))
+        cursor.execute('SELECT table_name FROM pg_catalog.pg_tables where schemaname=%s', (self.schema,))
         for row in cursor:
             yield row[0]
 
@@ -116,7 +117,7 @@ class PsqlTable(Table):
         super(PsqlTable, self).__init__(*a, quote='"', **kw)
 
     def add_column(self, name, column_type, not_null=False, default=NoValue, exist_ok=False, primary=False,
-                   auto_increment=False, collate=None):
+                   auto_increment=False, collate=None, unique=False, foreign_key=None):
         validate_name(name)
         assert re.match(r'^[\w\d\(\)]+$', column_type), 'Wrong type: {}'.format(column_type)
         values = []
@@ -136,25 +137,40 @@ class PsqlTable(Table):
         if not_null:
             scolumn += ' NOT NULL'
 
+        if unique:
+            scolumn += ' UNIQUE'
+
         if default != NoValue:
             if not_null or primary:
                 raise ValueError('Can''t have default value')
             scolumn += ' DEFAULT %s'
             values.append(default)
 
-        if self.tablename in self.engine.tables():
+        if self.table_name in self.engine.tables():
             if exist_ok:
                 if self.column(name):
                     return
             if primary:
                 raise NotImplementedError()
-            sql = 'ALTER TABLE {} ADD COLUMN {}'.format(self.tablename, scolumn)
+            sql = f'ALTER TABLE {self.table_name} ADD COLUMN {scolumn}'
+            if foreign_key and isinstance(foreign_key, tuple):
+                if isinstance(foreign_key[0], PsqlTable):
+                    sql += f', ADD FOREIGN KEY ({name}) REFERENCES {foreign_key[0].table_name} ({foreign_key[1]})'
+                else:
+                    raise TypeError()
         else:
-            sql = 'CREATE TABLE {} ({})'.format(self.tablename, scolumn)
+            sql = f'CREATE TABLE {self.table_name} ({scolumn})'
 
         self.cursor.execute(sql, tuple(values))
         self.engine.commit()
-        self.engine.local.tables[self.tablename] = None
+        self.engine.local.tables[self.table_name] = None
+
+    def add_foreign_key(self, name, table, table_key):
+        sql = f'ALTER TABLE {self.table_name} ADD FOREIGN KEY ({name}) REFERENCES {table.table_name} ({table_key})'
+
+        self.cursor.execute(sql)
+        self.engine.commit()
+        self.engine.local.tables[self.table_name] = None
 
     def has_index(self, name):
         self.cursor.execute(
@@ -162,7 +178,7 @@ class PsqlTable(Table):
             'from pg_class t, pg_class i, pg_index ix, pg_attribute a '
             'where t.oid = ix.indrelid and i.oid = ix.indexrelid '
             'and a.attrelid = t.oid and a.attnum = ANY(ix.indkey) '
-            'and t.relkind = %s and t.relname = %s', ('r', self.tablename))
+            'and t.relkind = %s and t.relname = %s', ('r', self.table_name))
         for row in self.cursor:
             if row[0] == name:
                 return True
@@ -182,5 +198,5 @@ class PsqlTable(Table):
         else:
             index_type = 'INDEX'
 
-        sql = 'CREATE {} {} ON {} ({})'.format(index_type, self.cc(name), self.cc(self.tablename), column)
+        sql = 'CREATE {} {} ON {} ({})'.format(index_type, self.cc(name), self.cc(self.table_name), column)
         self.cursor.execute(sql)

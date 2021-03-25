@@ -23,9 +23,11 @@ def main():
     db = PsqlEngine(host='localhost', db='simple', user='postgres', autocreate=True, read_commited=True)
     book = db.table('book')
     ref = db.table('ref')
+    link = db.table('link')
 
     book.drop()
     ref.drop()
+    link.drop()
 
     book.add_column('id', 'int', primary=True, auto_increment=True, exist_ok=True)
     book.add_column('id', 'int', primary=True, auto_increment=True, exist_ok=True)
@@ -131,6 +133,19 @@ def main():
     r = list(ref.find(left_join='book.id=book_id', order_by='ref.id'))
     assert len(r) == 5
     assert r[3]['book'] is None
+
+    link.add_column('id', 'int', primary=True, auto_increment=True)
+    link.add_column('ref_id', 'int', unique=True)
+    link.add_column('book_id', 'int', foreign_key=(book, 'id'))
+    link.add_foreign_key('ref_id', ref, 'id')
+
+    link.insert({'book_id': 1, 'ref_id': 1})
+    link.insert({'book_id': 3, 'ref_id': 3})
+    link.insert({'book_id': 4, 'ref_id': 4})
+
+    r = list(link.find(left_join='book.id=book_id', order_by='link.id'))
+    assert len(r) == 3
+
     db.close()
 
 
